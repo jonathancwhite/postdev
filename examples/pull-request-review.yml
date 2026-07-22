@@ -1,0 +1,26 @@
+# Example workflow — copy this into your repo at .github/workflows/postdev.yml
+#
+# It runs PostDev on every pull request. The Anthropic key comes from a
+# repository secret (Settings → Secrets and variables → Actions), passed through
+# `env` so it never lands in this file. Everything else is a plain input.
+name: PostDev Review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+permissions:
+  contents: read # read the diff and file contents
+  pull-requests: write # post the review
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: jonathancwhite/postdev@v1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          # All optional — shown here with their defaults.
+          model: claude-sonnet-5
+          min-severity: medium

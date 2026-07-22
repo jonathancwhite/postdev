@@ -1,0 +1,43 @@
+{
+  "name": "postdev",
+  "version": "0.1.0",
+  "description": "Bring-your-own-key code review bot for GitHub pull requests. Ships as a GitHub Action; the review engine is provider-neutral.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:action": "ncc build src/action/main.ts -o dist/action --minify",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "tsc"
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "@actions/github": "^9.1.1",
+    "@anthropic-ai/sdk": "^0.112.4",
+    "@octokit/app": "^15.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@vercel/ncc": "^0.44.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

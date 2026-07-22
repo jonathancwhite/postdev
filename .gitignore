@@ -1,0 +1,16 @@
+node_modules/
+# The TypeScript build output is generated, except the committed Action bundle:
+# `uses: jonathancwhite/postdev@v1` runs dist/action/index.js straight from the
+# repo, so that bundle is tracked. Everything else under dist/ stays ignored.
+dist/*
+!dist/action
+dist/action/**/*.d.ts
+dist/action/action
+dist/action/github
+dist/action/model
+dist/action/review
+dist/action/store
+*.log
+.env
+.env.local
+.DS_Store

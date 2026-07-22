@@ -1,0 +1,50 @@
+name: "PostDev Review"
+description: "Bring-your-own-key AI code review for pull requests. Every input is explained in the configuration guide linked below."
+author: "PostDev"
+
+branding:
+  icon: "check-circle"
+  color: "purple"
+
+# The model API key is NOT an input — pass it through `env` from a repository
+# secret so it is never written into a workflow file. See the configuration
+# guide: https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#anthropic_api_key
+inputs:
+  github-token:
+    description: >-
+      Token used to read the diff and post the review. Use the built-in
+      GITHUB_TOKEN. Configuration guide:
+      https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#github-token
+    required: false
+    default: ${{ github.token }}
+  model:
+    description: >-
+      Review model. Defaults to claude-sonnet-5 to keep costs low; set
+      claude-opus-4-8 for the strongest reviews. How to change it:
+      https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#model
+    required: false
+    default: "claude-sonnet-5"
+  fallback-model:
+    description: >-
+      Model tried once if the primary is unavailable. Configuration guide:
+      https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#fallback-model
+    required: false
+    default: "claude-sonnet-5"
+  min-severity:
+    description: >-
+      Lowest severity to post — low, medium, high, or critical. Findings below
+      it are skipped. Defaults to medium. Tuning noise:
+      https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#min-severity
+    required: false
+    default: "medium"
+  bot-login:
+    description: >-
+      The account the review posts under, used to skip comments already made on
+      earlier pushes. Defaults to github-actions[bot]. Configuration guide:
+      https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#bot-login
+    required: false
+    default: "github-actions[bot]"
+
+runs:
+  using: "node20"
+  main: "dist/action/index.js"
