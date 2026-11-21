@@ -1,0 +1,10 @@
+{
+  // PostDev's own blast-radius rules. Read from main, so a PR cannot change them for itself.
+  "blastRadius": {
+    // The Action's entry point, the gate itself, and the code that holds the token.
+    "high": ["action.yml", "src/action/**", "src/blastRadius/**", "src/github/**"],
+    "medium": ["src/**"],
+    // The bundle is generated and CI checks it matches the source; judge the source.
+    "low": ["dist/action/**", "examples/**", "test/**"]
+  }
+}

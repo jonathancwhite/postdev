@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import * as core from "@actions/core";
 import { context, getOctokit } from "@actions/github";
 import Anthropic from "@anthropic-ai/sdk";
@@ -11,7 +13,10 @@ import { createAnthropicModel, type Severity } from "../model/reviewModel.js";
 import { createGitHubPostedFindingsStore } from "../store/postedFindingsStore.js";
 import { runReview } from "../review/runReview.js";
 import type { Logger } from "../review/handlePullRequestOpened.js";
-import { reviewTargetFromEvent } from "./reviewEvent.js";
+import { blastRadiusTargetFromEvent, reviewTargetFromEvent } from "./reviewEvent.js";
+import { countImporters } from "../blastRadius/importGraph.js";
+import { createBlastRadiusGitHub } from "../blastRadius/github.js";
+import { runBlastRadius } from "../blastRadius/runBlastRadius.js";
 
 /**
  * The open-source Action defaults to a cheaper model than the engine's own
@@ -35,13 +40,71 @@ const logger: Logger = {
   },
 };
 
+/** Read a true/false input, falling back when it is empty. */
+function booleanInput(name: string, fallback: boolean): boolean {
+  const raw = core.getInput(name).trim().toLowerCase();
+  if (raw === "") return fallback;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  throw new Error(`The \`${name}\` input must be true or false.`);
+}
+
 /**
- * The GitHub Action front door. It sources what to review from the Action event,
- * builds the engine's injected collaborators from the workflow's inputs and the
- * built-in token, and hands off to the same `runReview` seam the webhook host
- * uses. All the review behaviour lives down in the engine; this only wires it.
+ * The GitHub Action front door. It runs up to two independent jobs on a pull
+ * request: the blast-radius check (no model key needed) and the AI review. Each
+ * reads what to act on from the Action event, builds its collaborators from the
+ * workflow inputs and the built-in token, and hands off to its engine seam.
  */
 export async function main(): Promise<void> {
+  const token = core.getInput("github-token");
+  if (!token) {
+    core.setFailed("The `github-token` input is required.");
+    return;
+  }
+  const octokit = getOctokit(token) as unknown as InstallationOctokit;
+
+  if (booleanInput("blast-radius", false)) {
+    // A failed blast-radius run posts no verdict, which agents read as "needs a
+    // person". It fails the job but still lets the review run.
+    try {
+      await blastRadius(octokit);
+    } catch (error) {
+      core.setFailed(
+        `Blast radius: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  if (booleanInput("review", true)) {
+    await review(octokit);
+  }
+}
+
+/**
+ * Work out the pull request's blast radius and publish it as a check run, a
+ * sticky comment and a label. Fan-out needs the repo checked out in the
+ * workspace (actions/checkout); without it the path rules still run.
+ */
+async function blastRadius(octokit: InstallationOctokit): Promise<void> {
+  const target = blastRadiusTargetFromEvent(context.eventName, context.payload, context.repo);
+  if (!target) {
+    core.info("No pull request to check the blast radius of for this event.");
+    return;
+  }
+  const workspace = process.env.GITHUB_WORKSPACE;
+  const checkedOut = workspace !== undefined && existsSync(join(workspace, ".git"));
+  const result = await runBlastRadius(target, {
+    github: createBlastRadiusGitHub(octokit),
+    configPath: core.getInput("config") || ".github/postdev.json",
+    labels: booleanInput("blast-radius-labels", true),
+    logger,
+    ...(checkedOut ? { countImporters: () => countImporters(workspace) } : {}),
+  });
+  core.setOutput("blast-radius-verdict", result.verdict);
+  core.info(`Blast radius: ${result.verdict}. ${result.reasons.join("; ")}`);
+}
+
+/** Review the pull request with the configured model and post the findings. */
+async function review(octokit: InstallationOctokit): Promise<void> {
   const target = reviewTargetFromEvent(
     context.eventName,
     context.payload,
@@ -58,14 +121,8 @@ export async function main(): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     core.setFailed(
-      "ANTHROPIC_API_KEY is not set. Pass it via `env` from a repository secret — see the configuration guide.",
+      "ANTHROPIC_API_KEY is not set. Pass it via `env` from a repository secret — see the configuration guide. To run only the blast-radius check, set `review: false`.",
     );
-    return;
-  }
-
-  const token = core.getInput("github-token");
-  if (!token) {
-    core.setFailed("The `github-token` input is required.");
     return;
   }
 
@@ -82,8 +139,7 @@ export async function main(): Promise<void> {
   }
 
   // `getOctokit` returns an Octokit that is structurally the installation client
-  // the engine expects; the cast records that at this one boundary.
-  const octokit = getOctokit(token) as unknown as InstallationOctokit;
+  // the engine expects; the cast in main() records that at this one boundary.
   const github = createGitHubClient(octokit);
   const claude = createAnthropicModel(new Anthropic({ apiKey }), {
     model,
