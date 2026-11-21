@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Typecheck, test & bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Rebuild the Action bundle
+        run: pnpm build:action
+
+      # The Action runs the committed bundle, so it must match the source.
+      - name: Check the committed bundle is up to date
+        run: |
+          if [ -n "$(git status --porcelain -- dist/action)" ]; then
+            git status --porcelain -- dist/action
+            echo "::error::dist/action is out of date. Run pnpm build:action and commit the result."
+            exit 1
+          fi

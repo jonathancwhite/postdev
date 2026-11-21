@@ -1,0 +1,37 @@
+# Example workflow — copy this into your repo at .github/workflows/postdev-blast-radius.yml
+#
+# It works out each pull request's blast radius and posts it as the
+# "PostDev blast radius" check, a sticky comment and a blast:* label. No model
+# key is needed. Agents read the check before merging; see docs/blast-radius.md.
+#
+# To also get the AI review, set `review: true` and pass ANTHROPIC_API_KEY in
+# `env` from a repository secret.
+name: PostDev blast radius
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  issues: write
+
+concurrency:
+  group: postdev-blast-radius-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  blast-radius:
+    runs-on: ubuntu-latest
+    steps:
+      # The checkout lets PostDev count importers, so a small edit to a file the
+      # whole app uses is not mistaken for a small change. It is read as text only.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: jonathancwhite/postdev@v1
+        with:
+          blast-radius: true
+          review: false

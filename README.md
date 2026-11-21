@@ -26,6 +26,30 @@ Every input is explained in the [configuration guide](docs/configuration.md).
 The key is passed through `env` from a secret, so it never lands in a workflow
 file.
 
+## Blast radius: which pull requests can merge themselves
+
+PostDev can also judge how far a pull request could reach if it is wrong, so
+coding agents can merge their own low-risk changes and leave the rest for a person.
+It needs no model key and posts a `PostDev blast radius` check, a sticky comment
+and a label:
+
+- **`auto`:** docs, copy, UI and small core fixes. Safe to merge once CI is green.
+- **`review`:** a larger core change.
+- **`human`:** migrations, auth, billing, background jobs, deploy config or
+  dependencies, or a file the whole app imports.
+
+```yaml
+- uses: actions/checkout@v4
+- uses: jonathancwhite/postdev@v1
+  with:
+    blast-radius: true
+    review: false   # keep true to also get the AI review
+```
+
+Rules live in `.github/postdev.json` on your base branch. See the
+[blast-radius guide](docs/blast-radius.md) for the rules, the config and the
+agent instructions.
+
 ## Cost
 
 PostDev defaults to `claude-sonnet-5` — a strong reviewer that keeps the bill
@@ -48,6 +72,9 @@ One review engine sits behind the Action:
 - `src/store/postedFindingsStore.ts` — cross-push dedupe with no database: it
   rebuilds what it already posted from the bot's own prior comments.
 - `src/github/client.ts` — the narrow slice of GitHub the bot needs.
+- `src/blastRadius/` — the blast-radius check: path rules and fan-out
+  (`rules.ts`), the import counter (`importGraph.ts`), and its own seam
+  (`runBlastRadius.ts`) with an injected GitHub slice, tested the same way.
 
 ## Develop
 
@@ -60,6 +87,20 @@ pnpm build:action  # bundle the Action into dist/action/
 
 Tests assert on external behaviour — what the bot tries to post to GitHub —
 through the injected seams, never on internals.
+
+The Action runs the committed bundle in `dist/action/`, so rebuild it with
+`pnpm build:action` and commit it with any source change. CI fails if the
+bundle is out of date.
+
+## Release
+
+`uses: jonathancwhite/postdev@v1` follows the `v1` tag. After merging to `main`,
+tag the release and move `v1` to it:
+
+```sh
+git tag v1.1.0 && git tag -f v1 v1.1.0
+git push origin v1.1.0 && git push -f origin v1
+```
 
 ## License
 

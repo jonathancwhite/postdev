@@ -1,4 +1,5 @@
 import type { PullRequestContext } from "../github/client.js";
+import type { BlastRadiusTarget } from "../blastRadius/runBlastRadius.js";
 
 /** The loose shape of a `pull_request` event payload, as far as we read it. */
 export interface PullRequestEventPayload {
@@ -79,4 +80,53 @@ export function reviewTargetFromEvent(
     return { pr, push: { before: payload.before, after: payload.after } };
   }
   return { pr };
+}
+
+/** The `pull_request` actions that (re)work out the blast radius. */
+const BLAST_RADIUS_ACTIONS = new Set([
+  "opened",
+  "reopened",
+  "ready_for_review",
+  "synchronize",
+  "labeled",
+  "unlabeled",
+]);
+
+/** The extra payload fields the blast-radius check reads. */
+export interface BlastRadiusEventPayload extends PullRequestEventPayload {
+  pull_request?: PullRequestEventPayload["pull_request"] & {
+    base?: { sha?: string };
+    labels?: Array<{ name?: string }>;
+    changed_files?: number;
+  };
+}
+
+/**
+ * Decide which pull request a run should work out the blast radius for, or null.
+ * Unlike the review, drafts are included, and adding or removing a label re-runs
+ * it, so a person's override label takes effect at once.
+ */
+export function blastRadiusTargetFromEvent(
+  eventName: string,
+  payload: BlastRadiusEventPayload,
+  repo: RepoRef,
+): BlastRadiusTarget | null {
+  if (eventName !== "pull_request") return null;
+  if (typeof payload.action !== "string" || !BLAST_RADIUS_ACTIONS.has(payload.action)) {
+    return null;
+  }
+  const pull = payload.pull_request;
+  const pullNumber = pull?.number;
+  const headSha = pull?.head?.sha;
+  const baseSha = pull?.base?.sha;
+  if (pullNumber === undefined || !headSha || !baseSha) return null;
+  return {
+    owner: repo.owner,
+    repo: repo.repo,
+    pullNumber,
+    headSha,
+    baseSha,
+    labels: (pull?.labels ?? []).flatMap((l) => (l.name ? [l.name] : [])),
+    ...(typeof pull?.changed_files === "number" ? { changedFileCount: pull.changed_files } : {}),
+  };
 }

@@ -5,11 +5,16 @@ node_modules/
 dist/*
 !dist/action
 dist/action/**/*.d.ts
+dist/action/*.js.map
 dist/action/action
+dist/action/blastRadius
 dist/action/github
 dist/action/model
 dist/action/review
 dist/action/store
+# `tsc` also writes src/action/*.ts here; only ncc's bundle and its chunks are tracked.
+dist/action/main.js
+dist/action/reviewEvent.js
 *.log
 .env
 .env.local

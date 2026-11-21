@@ -1,5 +1,5 @@
 name: "PostDev Review"
-description: "Bring-your-own-key AI code review for pull requests. Every input is explained in the configuration guide linked below."
+description: "Bring-your-own-key AI code review for pull requests, plus a blast-radius check that tells agents which PRs are safe to auto-merge."
 author: "PostDev"
 
 branding:
@@ -37,6 +37,33 @@ inputs:
       https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#min-severity
     required: false
     default: "medium"
+  review:
+    description: >-
+      Run the AI review. Needs ANTHROPIC_API_KEY in `env`. Set false to run only
+      the blast-radius check. Configuration guide:
+      https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#review
+    required: false
+    default: "true"
+  blast-radius:
+    description: >-
+      Work out the pull request's blast radius and post it as the "PostDev blast
+      radius" check, a sticky comment and a blast:* label. No model key needed.
+      Guide: https://github.com/jonathancwhite/postdev/blob/main/docs/blast-radius.md
+    required: false
+    default: "false"
+  config:
+    description: >-
+      Path of the PostDev config file, read from the base branch so a pull
+      request cannot change its own rules. Guide:
+      https://github.com/jonathancwhite/postdev/blob/main/docs/blast-radius.md#config
+    required: false
+    default: ".github/postdev.json"
+  blast-radius-labels:
+    description: >-
+      Set a blast:auto, blast:review or blast:human label on the pull request.
+      Needs `issues: write`. Set false to skip labels.
+    required: false
+    default: "true"
   bot-login:
     description: >-
       The account the review posts under, used to skip comments already made on
@@ -45,6 +72,11 @@ inputs:
     required: false
     default: "github-actions[bot]"
 
+outputs:
+  blast-radius-verdict:
+    description: >-
+      auto, review or human, when the blast-radius check ran.
+
 runs:
-  using: "node20"
+  using: "node24"
   main: "dist/action/index.js"

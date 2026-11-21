@@ -86,3 +86,28 @@ export type {
   PostedFindingLocation,
 } from "./store/trainingStore.js";
 export { createGitHubPostedFindingsStore } from "./store/postedFindingsStore.js";
+
+// The blast-radius check: which pull requests are small enough to auto-merge.
+export {
+  classifyChange,
+  DEFAULT_CONFIG as DEFAULT_BLAST_RADIUS_CONFIG,
+} from "./blastRadius/rules.js";
+export type {
+  Verdict,
+  Tier,
+  ChangedPath,
+  BlastRadiusConfig,
+  BlastRadiusLimits,
+  BlastRadiusResult,
+  ClassifiedFile,
+} from "./blastRadius/rules.js";
+export { loadBlastRadiusConfig, BlastRadiusConfigError } from "./blastRadius/config.js";
+export { countImporters, findImportSpecifiers } from "./blastRadius/importGraph.js";
+export { runBlastRadius } from "./blastRadius/runBlastRadius.js";
+export type {
+  BlastRadiusTarget,
+  BlastRadiusGitHub,
+  RunBlastRadiusDeps,
+} from "./blastRadius/runBlastRadius.js";
+export { createBlastRadiusGitHub } from "./blastRadius/github.js";
+export { CHECK_NAME as BLAST_RADIUS_CHECK_NAME } from "./blastRadius/report.js";
