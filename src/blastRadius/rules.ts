@@ -81,6 +81,13 @@ export const DEFAULT_HIGH: readonly string[] = [
   "**/migrations/**",
   "**/schema.prisma",
   "**/.env*",
+  // Agent instructions and settings: they hold the merge rules this check feeds,
+  // so an agent must never loosen them in a pull request it merges itself.
+  "**/AGENTS.md",
+  "**/CLAUDE.md",
+  ".claude/**",
+  ".cursor/**",
+  "**/.cursorrules",
 ];
 
 /**

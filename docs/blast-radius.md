@@ -81,6 +81,10 @@ The built-in high-risk paths are:
 - Dependencies and build config: every `package.json`, `pnpm-workspace.yaml`, `.npmrc`, `.nvmrc`, `tsconfig*.json`, `turbo.json`, `nx.json`
 - Database: `*.sql`, `**/migrations/**`, `schema.prisma`
 - Env files: `.env*`
+- Agent instructions: `AGENTS.md`, `CLAUDE.md`, `.claude/**`, `.cursor/**`, `.cursorrules`
+
+Agent instructions are high because they hold the merge rules. An agent that
+could edit them and merge the change itself could loosen its own gate.
 
 `.github/**` includes the PostDev config itself, so a pull request that changes
 the rules always goes to a person.

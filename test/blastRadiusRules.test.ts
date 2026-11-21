@@ -60,6 +60,9 @@ describe("classifyChange", () => {
       "backend/src/migrations/2026-add-table.ts",
       ".env.production",
       "railway.json",
+      "AGENTS.md",
+      "apps/web/CLAUDE.md",
+      ".claude/settings.json",
     ]) {
       expect(classifyChange([file(path)], APP_CONFIG).verdict, path).toBe("human");
     }
