@@ -1,5 +1,5 @@
 import type { GitHubClient, PullRequestContext } from "../github/client.js";
-import type { ReviewAxis, Severity } from "../model/reviewModel.js";
+import { REVIEW_AXES, type ReviewAxis, type Severity } from "../model/reviewModel.js";
 import type { GatedFinding, ReviewResult } from "./reviewPullRequest.js";
 import { fingerprintFinding, type FindingPlacement } from "../store/trainingStore.js";
 import { fingerprintMarker } from "./fingerprintMarker.js";
@@ -161,6 +161,7 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 };
 
 const AXIS_LABEL: Record<ReviewAxis, string> = {
+  correctness: "Correctness",
   standards: "Standards",
   spec: "Spec",
 };
@@ -230,7 +231,7 @@ function buildSummary(
 
   const specNote =
     specReviewed === false
-      ? ["", "_Spec: skipped, because this pull request links no issue. Only coding standards were checked._"]
+      ? ["", "_Spec: skipped, because this pull request links no issue._"]
       : [];
 
   const total = inline.length + unanchored.length;
@@ -261,9 +262,9 @@ function buildSummary(
     return parts.join("\n");
   }
 
-  // The two axes are reported separately and never ranked against each other:
-  // a change can follow every standard and still miss its issue, or the reverse.
-  for (const axis of ["standards", "spec"] as const) {
+  // The axes are reported separately and never ranked against each other: a
+  // change can follow every standard and still miss its issue, or the reverse.
+  for (const axis of REVIEW_AXES) {
     const ofAxis = all.filter((finding) => finding.axis === axis);
     if (ofAxis.length === 0) continue;
     parts.push(`**${AXIS_LABEL[axis]}**`, ...lines(ofAxis), "");

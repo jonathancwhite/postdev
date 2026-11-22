@@ -18,6 +18,7 @@ import {
   type ReviewRequest,
 } from "../src/model/reviewModel.js";
 import {
+  CORRECTNESS_SYSTEM_PROMPT,
   SMELL_BASELINE,
   SPEC_INCREMENTAL_NOTE,
   SPEC_SYSTEM_PROMPT,
@@ -167,13 +168,17 @@ describe("createReviewContextReader", () => {
   });
 });
 
-describe("createAnthropicModel, two axes", () => {
-  it("runs Standards and Spec as separate calls and labels each finding by axis", async () => {
-    const { client, calls } = fakeAnthropic((system) =>
-      system === SPEC_SYSTEM_PROMPT
-        ? [finding({ category: "missing requirement", severity: "high" })]
-        : [finding()],
-    );
+describe("createAnthropicModel, separate axes", () => {
+  it("runs Correctness, Standards and Spec as separate calls and labels each finding by axis", async () => {
+    const { client, calls } = fakeAnthropic((system) => {
+      if (system === SPEC_SYSTEM_PROMPT) {
+        return [finding({ category: "missing requirement", severity: "high" })];
+      }
+      if (system === CORRECTNESS_SYSTEM_PROMPT) {
+        return [finding({ category: "unhandled null", severity: "high" })];
+      }
+      return [finding()];
+    });
     const model = createAnthropicModel(client, { model: "primary", fallbackModel: "fallback" });
     const response = await model.review(
       request({
@@ -183,8 +188,12 @@ describe("createAnthropicModel, two axes", () => {
     );
 
     expect(calls.map((call) => call.system).sort()).toEqual(
-      [SPEC_SYSTEM_PROMPT, STANDARDS_SYSTEM_PROMPT].sort(),
+      [CORRECTNESS_SYSTEM_PROMPT, SPEC_SYSTEM_PROMPT, STANDARDS_SYSTEM_PROMPT].sort(),
     );
+    const correctnessCall = calls.find((call) => call.system === CORRECTNESS_SYSTEM_PROMPT)!;
+    expect(correctnessCall.user).toContain("const x = 1;");
+    expect(correctnessCall.user).not.toContain("Use named exports");
+    expect(correctnessCall.user).not.toContain("Show a cart total");
     const standardsCall = calls.find((call) => call.system === STANDARDS_SYSTEM_PROMPT)!;
     const specCall = calls.find((call) => call.system === SPEC_SYSTEM_PROMPT)!;
     expect(standardsCall.user).toContain('<repo-document source="CONTRIBUTING.md">');
@@ -195,6 +204,7 @@ describe("createAnthropicModel, two axes", () => {
     expect(response.specReviewed).toBe(true);
     expect(response.model).toBe("primary");
     expect(response.findings.map((f) => [f.axis, f.category])).toEqual([
+      ["correctness", "unhandled null"],
       ["standards", "possible Feature Envy"],
       ["spec", "missing requirement"],
     ]);
@@ -208,9 +218,11 @@ describe("createAnthropicModel, two axes", () => {
   it("skips Spec when the pull request links no issue", async () => {
     const { client, calls } = fakeAnthropic(() => []);
     const response = await createAnthropicModel(client).review(request());
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.system).toBe(STANDARDS_SYSTEM_PROMPT);
-    expect(calls[0]!.user).toContain("no documented coding standards");
+    expect(calls.map((call) => call.system).sort()).toEqual(
+      [CORRECTNESS_SYSTEM_PROMPT, STANDARDS_SYSTEM_PROMPT].sort(),
+    );
+    const standardsCall = calls.find((call) => call.system === STANDARDS_SYSTEM_PROMPT)!;
+    expect(standardsCall.user).toContain("no documented coding standards");
     expect(response.specReviewed).toBe(false);
   });
 
@@ -307,7 +319,7 @@ describe("reviewPullRequest with review context", () => {
   });
 });
 
-describe("postReview, two axes", () => {
+describe("postReview, separate axes", () => {
   const DIFF = [
     "diff --git a/x.ts b/x.ts",
     "--- a/x.ts",
@@ -352,14 +364,17 @@ describe("postReview, two axes", () => {
         findings: [
           gated({ axis: "spec", category: "scope creep", line: 11, message: "Adds a CSV export the issue never asked for." }),
           gated({ axis: "standards", category: "possible Feature Envy", line: 10 }),
+          gated({ axis: "correctness", category: "unhandled null", line: 10, severity: "high", message: "b is null when the cart is empty." }),
         ],
       }),
       { github: github.client },
     );
     expect(github.inline.some((body) => body.includes("**[MEDIUM] Spec · scope creep**"))).toBe(true);
     expect(github.inline.some((body) => body.includes("**[MEDIUM] Standards · possible Feature Envy**"))).toBe(true);
+    expect(github.inline.some((body) => body.includes("**[HIGH] Correctness · unhandled null**"))).toBe(true);
     const body = github.bodies[0]!;
-    expect(body.indexOf("**Standards**")).toBeGreaterThan(-1);
+    expect(body.indexOf("**Correctness**")).toBeGreaterThan(-1);
+    expect(body.indexOf("**Standards**")).toBeGreaterThan(body.indexOf("**Correctness**"));
     expect(body.indexOf("**Spec**")).toBeGreaterThan(body.indexOf("**Standards**"));
     expect(body).not.toContain("Spec: skipped");
   });

@@ -15,6 +15,7 @@
  * The skill runs each axis as a separate sub-agent and reports them side by side
  * without reranking. PostDev keeps that shape: each axis is its own model call
  * with its own prompt, and every finding is labelled with the axis it came from.
+ * PostDev adds a third axis of its own, Correctness, which is not from the skill.
  */
 
 /** Rules shared by both axes: coverage, structured output, and anchoring. */
@@ -58,6 +59,27 @@ export const SMELL_BASELINE = [
   "- Message Chains: long a.b().c().d() navigation the caller shouldn't depend on. Fix: hide the walk behind one method on the first object.",
   "- Middle Man: a class or function that mostly just delegates onward. Fix: cut it, call the real target direct.",
   "- Refused Bequest: a subclass or implementer that ignores or overrides most of what it inherits. Fix: drop the inheritance, use composition.",
+].join("\n");
+
+/**
+ * System prompt for the Correctness axis: PostDev's own bug hunt, kept beside
+ * the two axes from the skill so a change that follows every standard and meets
+ * its issue still gets checked for code that breaks.
+ */
+export const CORRECTNESS_SYSTEM_PROMPT = [
+  "You review one axis of a pull request: Correctness. Does the changed code",
+  "work? Look for logic errors, unhandled errors and nulls, race conditions,",
+  "off-by-one mistakes, misused APIs, and code that breaks under some input.",
+  "Separate reviewers check coding standards and whether the change does what",
+  "its issue asked; that is not your job.",
+  "",
+  "Severity: code that loses or corrupts data, crashes, or is wrong on a common",
+  "path is high, or critical when it would break production for most users;",
+  "code wrong only on an edge case is medium; a fragile spot that works today is",
+  "low. Category: a few words naming the kind of problem, for example",
+  "'unhandled null' or 'off-by-one'.",
+  "",
+  SHARED_RULES,
 ].join("\n");
 
 /** System prompt for the Standards axis. */

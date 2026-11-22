@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
+  CORRECTNESS_SYSTEM_PROMPT,
   SPEC_INCREMENTAL_NOTE,
   SPEC_SYSTEM_PROMPT,
   STANDARDS_SYSTEM_PROMPT,
@@ -28,12 +29,16 @@ export type Severity = "low" | "medium" | "high" | "critical";
 const SEVERITIES: readonly Severity[] = ["low", "medium", "high", "critical"];
 
 /**
- * Which review a finding came from. Standards asks whether the code follows the
- * repository's documented coding standards (plus a code-smell baseline); Spec
- * asks whether it does what its linked issue asked. The two are reviewed and
- * reported separately, never ranked against each other.
+ * Which review a finding came from. Correctness asks whether the changed code
+ * works; Standards asks whether it follows the repository's documented coding
+ * standards (plus a code-smell baseline); Spec asks whether it does what its
+ * linked issue asked. Each is reviewed and reported separately, never ranked
+ * against the others.
  */
-export type ReviewAxis = "standards" | "spec";
+export type ReviewAxis = "correctness" | "standards" | "spec";
+
+/** The axes in the order they are reported. */
+export const REVIEW_AXES: readonly ReviewAxis[] = ["correctness", "standards", "spec"];
 
 /** A single thing the model flagged. The model reports every one it finds. */
 export interface Finding {
@@ -212,6 +217,11 @@ function changeContent(request: ReviewRequest): string[] {
   return parts;
 }
 
+/** The user turn for the Correctness axis: the change alone. */
+export function buildCorrectnessContent(request: ReviewRequest): string {
+  return changeContent(request).join("\n");
+}
+
 /** The user turn for the Standards axis: the repo's standards, then the change. */
 export function buildStandardsContent(request: ReviewRequest): string {
   const standards = request.standards ?? [];
@@ -278,10 +288,11 @@ export interface ReviewModelOptions {
 
 /**
  * Build a {@link ReviewModel} backed by the Anthropic SDK. It reviews the change
- * on two separate axes, each its own model call with its own prompt: Standards
- * always, and Spec only when the pull request links an issue. The two run in
- * parallel and their findings come back labelled by axis, never reranked. Each
- * call that fails on the primary model is retried once on the fallback model.
+ * on separate axes, each its own model call with its own prompt: Correctness
+ * and Standards always, and Spec only when the pull request links an issue.
+ * They run in parallel and their findings come back labelled by axis, never
+ * reranked. Each call that fails on the primary model is retried once on the
+ * fallback model.
  */
 export function createAnthropicModel(
   anthropic: Anthropic,
@@ -312,20 +323,21 @@ export function createAnthropicModel(
   return {
     async review(request) {
       const specReviewed = (request.spec ?? []).length > 0;
-      const [standards, spec] = await Promise.all([
+      const [correctness, standards, spec] = await Promise.all([
+        reviewAxis("correctness", CORRECTNESS_SYSTEM_PROMPT, buildCorrectnessContent(request)),
         reviewAxis("standards", STANDARDS_SYSTEM_PROMPT, buildStandardsContent(request)),
         specReviewed
           ? reviewAxis("spec", SPEC_SYSTEM_PROMPT, buildSpecContent(request))
           : Promise.resolve(null),
       ]);
-      // If either axis needed the fallback, report the fallback: the stored
-      // model id should never overstate which model reviewed the change.
-      const usedModel =
-        standards.model === fallbackModel || spec?.model === fallbackModel
-          ? fallbackModel
-          : model;
+      // If any axis needed the fallback, report the fallback: the stored model
+      // id should never overstate which model reviewed the change.
+      const ran = [correctness, standards, ...(spec ? [spec] : [])];
+      const usedModel = ran.some((axis) => axis.model === fallbackModel)
+        ? fallbackModel
+        : model;
       return {
-        findings: [...standards.findings, ...(spec?.findings ?? [])],
+        findings: ran.flatMap((axis) => axis.findings),
         model: usedModel,
         specReviewed,
       };

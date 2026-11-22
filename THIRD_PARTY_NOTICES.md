@@ -2,7 +2,7 @@
 
 ## mattpocock/skills
 
-PostDev's two-axis review (Standards and Spec) and its code-smell baseline, in
+PostDev's Standards and Spec review axes and its code-smell baseline, in
 `src/model/reviewPrompts.ts`, are adapted from the `code-review` skill in
 https://github.com/mattpocock/skills (`skills/engineering/code-review/SKILL.md`).
 

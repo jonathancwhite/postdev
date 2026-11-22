@@ -5,8 +5,10 @@ model key. When a pull request opens or gets a push, PostDev reviews the change
 and posts its findings before a human looks — inline where it can, a short
 summary otherwise. Push a fix and it won't repeat a note it already made.
 
-The review looks at each change two ways, and reports them separately:
+The review looks at each change three ways, and reports them separately:
 
+- **Correctness:** does the changed code work? Logic errors, unhandled errors
+  and nulls, races, off-by-one mistakes and misused APIs.
 - **Standards:** does the code follow your repository's documented coding
   standards (`CODING_STANDARDS.md`, `CONTRIBUTING.md`, `CLAUDE.md` and the like),
   plus a baseline of twelve code smells? Your documents always win over the
@@ -17,7 +19,7 @@ The review looks at each change two ways, and reports them separately:
   implementations. With no linked issue, this part is skipped and the summary
   says so.
 
-The two-axis approach and the smell baseline are adapted from Matt Pocock's
+The Standards and Spec axes and the smell baseline are adapted from Matt Pocock's
 [`code-review` skill](https://github.com/mattpocock/skills), under the MIT
 License (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
@@ -90,9 +92,9 @@ One review engine sits behind the Action:
 - `src/store/postedFindingsStore.ts` — cross-push dedupe with no database: it
   rebuilds what it already posted from the bot's own prior comments.
 - `src/github/client.ts` — the narrow slice of GitHub the bot needs.
-- `src/github/reviewContext.ts` — what the two review axes measure against: the
-  repository's standards files, read at the pull request's base, and its linked
-  issues. `src/model/reviewPrompts.ts` holds the Standards and Spec prompts.
+- `src/github/reviewContext.ts` — what the Standards and Spec axes measure
+  against: the repository's standards files, read at the pull request's base,
+  and its linked issues. `src/model/reviewPrompts.ts` holds the three prompts.
 - `src/blastRadius/` — the blast-radius check: path rules and fan-out
   (`rules.ts`), the import counter (`importGraph.ts`), and its own seam
   (`runBlastRadius.ts`) with an injected GitHub slice, tested the same way.

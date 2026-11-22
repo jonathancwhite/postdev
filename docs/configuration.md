@@ -137,8 +137,10 @@ with:
   blast-radius: true
 ```
 
-The review runs on two axes, each its own model call:
+The review runs on three axes, each its own model call:
 
+- **Correctness** looks for code that breaks: logic errors, unhandled errors
+  and nulls, races, off-by-one mistakes and misused APIs.
 - **Standards** reads each of these files that exists, at the pull
   request's base so a change can't rewrite the rules it is checked against:
   `CODING_STANDARDS.md`, `docs/CODING_STANDARDS.md`, `CONTRIBUTING.md`,
@@ -152,9 +154,9 @@ The review runs on two axes, each its own model call:
   the push leaves out.
 
 Findings are labelled with their axis (for example
-**[MEDIUM] Standards · possible Feature Envy**) and the summary lists the two
-axes under their own headings. A run uses two model calls when an issue is
-linked, and one otherwise.
+**[MEDIUM] Standards · possible Feature Envy**) and the summary lists each axis
+under its own heading. A run uses three model calls when an issue is linked,
+and two otherwise.
 
 ## `blast-radius`
 
