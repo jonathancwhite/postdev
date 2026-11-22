@@ -139,3 +139,16 @@ describe("resolveAnthropicAuth", () => {
     }
   });
 });
+
+describe("describeIdentityToken", () => {
+  it("prints the claims and never the token", async () => {
+    const { describeIdentityToken } = await import("../src/action/anthropicAuth.js");
+    const enc = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const jwt = `${enc({ alg: "RS256" })}.${enc({ iss: "https://token.actions.githubusercontent.com", aud: "https://api.anthropic.com", sub: "repo:o/r:pull_request", event_name: "pull_request" })}.c2lnbmF0dXJl`;
+    const out = describeIdentityToken(jwt);
+    expect(out).toContain('sub="repo:o/r:pull_request"');
+    expect(out).toContain('aud="https://api.anthropic.com"');
+    expect(out).not.toContain("c2lnbmF0dXJl");
+    expect(describeIdentityToken("garbage")).toMatch(/Could not read/);
+  });
+});

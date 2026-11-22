@@ -14,7 +14,7 @@ import { createGitHubPostedFindingsStore } from "../store/postedFindingsStore.js
 import { runReview } from "../review/runReview.js";
 import type { Logger } from "../review/handlePullRequestOpened.js";
 import { blastRadiusTargetFromEvent, reviewTargetFromEvent } from "./reviewEvent.js";
-import { resolveAnthropicAuth } from "./anthropicAuth.js";
+import { describeIdentityToken, resolveAnthropicAuth } from "./anthropicAuth.js";
 import { countImporters } from "../blastRadius/importGraph.js";
 import { createBlastRadiusGitHub } from "../blastRadius/github.js";
 import { runBlastRadius } from "../blastRadius/runBlastRadius.js";
@@ -135,7 +135,13 @@ async function review(octokit: InstallationOctokit): Promise<void> {
       oidcRequestUrl: process.env.ACTIONS_ID_TOKEN_REQUEST_URL,
       baseURL: process.env.ANTHROPIC_BASE_URL,
     },
-    (audience) => core.getIDToken(audience),
+    async (audience) => {
+      const token = await core.getIDToken(audience);
+      // Claims only, never the token itself, so a refused sign-in can be
+      // compared with the federation rule in the Console.
+      core.notice(describeIdentityToken(token), { title: "PostDev sign-in identity" });
+      return token;
+    },
   );
   if (auth.kind === "missing") {
     core.setFailed(auth.message);

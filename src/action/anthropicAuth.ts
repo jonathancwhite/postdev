@@ -101,3 +101,18 @@ export function resolveAnthropicAuth(
       "No Anthropic credentials. Either set `anthropic-federation-rule-id` and `anthropic-organization-id` (keyless, with `permissions: id-token: write`), or pass ANTHROPIC_API_KEY via `env` from a repository secret. To run only the blast-radius check, set `review: false`.",
   };
 }
+
+const IDENTITY_CLAIMS = ["iss", "aud", "sub", "repository", "repository_owner", "event_name", "ref", "job_workflow_ref"] as const;
+
+/**
+ * The public claims of a GitHub OIDC token, for the run log. Never includes the
+ * token or its signature, so it is safe to print.
+ */
+export function describeIdentityToken(jwt: string): string {
+  try {
+    const payload = JSON.parse(Buffer.from(jwt.split(".")[1] ?? "", "base64url").toString("utf8")) as Record<string, unknown>;
+    return IDENTITY_CLAIMS.map((k) => `${k}=${JSON.stringify(payload[k] ?? null)}`).join(" ");
+  } catch {
+    return "Could not read the identity token's claims.";
+  }
+}
