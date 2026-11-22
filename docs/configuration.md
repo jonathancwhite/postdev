@@ -1,7 +1,7 @@
 # Configuration
 
 PostDev runs as a GitHub Action. You configure it with `with:` inputs in your
-workflow file, and one secret. It does two jobs, each switched on with an input:
+workflow file, and either a keyless sign-in or one secret. It does two jobs, each switched on with an input:
 the AI review (`review`, on by default) and the blast-radius check
 (`blast-radius`, off by default). This page explains every setting — the
 `action.yml` input descriptions link straight here.
@@ -9,9 +9,60 @@ the AI review (`review`, on by default) and the blast-radius check
 To get started, copy [`examples/pull-request-review.yml`](../examples/pull-request-review.yml)
 into your repository at `.github/workflows/postdev.yml`.
 
-## `ANTHROPIC_API_KEY`
+## Signing in to Anthropic
 
-Your Anthropic API key, needed only for the review. This is a **secret, not an input** — pass it through
+The review needs to call the Anthropic API. Pick one:
+
+- **Keyless (recommended):** GitHub vouches for the run, and Anthropic trades
+  that for a short-lived token. Nothing secret is stored in the repository.
+- **An API key:** a repository secret, as below.
+
+If both are set up, keyless wins.
+
+### Keyless sign-in with GitHub OIDC
+
+1. In the Claude Console, open **Workload identity → Connect workload →
+   GitHub Actions**. Create one rule per repository:
+   - **GitHub organization:** the account that owns the repo.
+   - **Repository:** the repo's name.
+   - **Subject:** `repo:<owner>/<repo>:pull_request`. Don't add a branch
+     match such as `refs/heads/main`: pull request runs carry the
+     `pull_request` subject, not a branch, so they wouldn't match.
+   - **Audience:** `https://api.anthropic.com`.
+   - **Scope:** `workspace:inference` is enough for the review.
+2. Copy the rule ID (`fdrl_...`) and your organization ID. Neither is a secret.
+3. Give the job `id-token: write` and pass the IDs as inputs:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write # lets GitHub issue the run's OIDC token
+
+steps:
+  - uses: jonathancwhite/postdev@v1
+    with:
+      anthropic-federation-rule-id: fdrl_...
+      anthropic-organization-id: 00000000-0000-0000-0000-000000000000
+```
+
+Pull requests from forks get no OIDC token, so the review skips them with a
+clear error rather than running with someone else's code.
+
+| Input | Needed | What it is |
+| --- | --- | --- |
+| `anthropic-federation-rule-id` | yes | The rule's `fdrl_...` ID. |
+| `anthropic-organization-id` | yes | Your organization's UUID. |
+| `anthropic-workspace-id` | if the rule covers several workspaces | `wrkspc_...` |
+| `anthropic-service-account-id` | no | `svac_...`; must be the rule's account if set. |
+| `anthropic-oidc-audience` | no | Defaults to `https://api.anthropic.com`; must match the rule. |
+
+If sign-in fails, the Console's authentication history shows why a token
+request was turned down.
+
+### `ANTHROPIC_API_KEY`
+
+Your Anthropic API key, if you don't use keyless sign-in. This is a **secret, not an input** — pass it through
 `env` from a repository secret so it is never written into a workflow file or
 committed:
 
@@ -38,13 +89,13 @@ permissions:
 
 ## `model`
 
-The review model. **Defaults to `claude-sonnet-5`** — a strong reviewer that
+The review model. **Defaults to `claude-sonnet-5-5`** — a strong reviewer that
 keeps costs low on a busy repo. For the strongest reviews, set it to
-`claude-opus-4-8`:
+`claude-opus-5-5`:
 
 ```yaml
 with:
-  model: claude-opus-4-8
+  model: claude-opus-5-5
 ```
 
 Any Anthropic model id works. The engine is provider-neutral, so other providers
@@ -53,7 +104,7 @@ can be added over time — today the shipped model client is Anthropic.
 ## `fallback-model`
 
 The model tried once if the primary is unavailable. Defaults to
-`claude-sonnet-5`. Leave it unless you have a reason to change it.
+`claude-sonnet-5`, so an outage of the primary is covered by a different model. Leave it unless you have a reason to change it.
 
 ## `min-severity`
 

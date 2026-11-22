@@ -1,8 +1,13 @@
 # Example workflow — copy this into your repo at .github/workflows/postdev.yml
 #
-# It runs PostDev on every pull request. The Anthropic key comes from a
-# repository secret (Settings → Secrets and variables → Actions), passed through
-# `env` so it never lands in this file. Everything else is a plain input.
+# It runs PostDev on every pull request. It signs in to Anthropic without a
+# stored key: GitHub issues the run an OIDC token (id-token: write) and the
+# federation rule you create in the Claude Console accepts it. See
+# docs/configuration.md#signing-in-to-anthropic. To use an API key instead,
+# drop the anthropic-* inputs and id-token, and pass the key through `env`:
+#
+#   env:
+#     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 name: PostDev Review
 
 on:
@@ -12,15 +17,16 @@ on:
 permissions:
   contents: read # read the diff and file contents
   pull-requests: write # post the review
+  id-token: write # keyless sign-in to Anthropic
 
 jobs:
   review:
     runs-on: ubuntu-latest
     steps:
       - uses: jonathancwhite/postdev@v1
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
+          anthropic-federation-rule-id: fdrl_REPLACE_ME # not a secret
+          anthropic-organization-id: REPLACE_ME # your organization UUID, not a secret
           # All optional — shown here with their defaults.
-          model: claude-sonnet-5
+          model: claude-sonnet-5-5
           min-severity: medium

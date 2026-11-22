@@ -4,8 +4,8 @@
 # "PostDev blast radius" check, a sticky comment and a blast:* label. No model
 # key is needed. Agents read the check before merging; see docs/blast-radius.md.
 #
-# To also get the AI review, set `review: true` and pass ANTHROPIC_API_KEY in
-# `env` from a repository secret.
+# To also get the AI review, set `review: true` and sign in to Anthropic, either
+# keyless (see examples/pull-request-review.yml) or with ANTHROPIC_API_KEY in `env`.
 name: PostDev blast radius
 
 on:

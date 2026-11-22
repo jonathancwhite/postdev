@@ -13,8 +13,9 @@ dist/action/model
 dist/action/review
 dist/action/store
 # `tsc` also writes src/action/*.ts here; only ncc's bundle and its chunks are tracked.
-dist/action/main.js
-dist/action/reviewEvent.js
+dist/action/*.js
+!dist/action/index.js
+!dist/action/*.index.js
 *.log
 .env
 .env.local

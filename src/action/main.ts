@@ -14,6 +14,7 @@ import { createGitHubPostedFindingsStore } from "../store/postedFindingsStore.js
 import { runReview } from "../review/runReview.js";
 import type { Logger } from "../review/handlePullRequestOpened.js";
 import { blastRadiusTargetFromEvent, reviewTargetFromEvent } from "./reviewEvent.js";
+import { describeIdentityToken, resolveAnthropicAuth } from "./anthropicAuth.js";
 import { countImporters } from "../blastRadius/importGraph.js";
 import { createBlastRadiusGitHub } from "../blastRadius/github.js";
 import { runBlastRadius } from "../blastRadius/runBlastRadius.js";
@@ -23,7 +24,10 @@ import { runBlastRadius } from "../blastRadius/runBlastRadius.js";
  * default, so wiring the bot to a busy personal repo does not produce a
  * surprising bill. A user opts up to a stronger model with the `model` input.
  */
-const DEFAULT_ACTION_MODEL = "claude-sonnet-5";
+const DEFAULT_ACTION_MODEL = "claude-sonnet-5-5";
+
+/** A different model from the default, so an outage of one is covered. */
+const DEFAULT_ACTION_FALLBACK_MODEL = "claude-sonnet-5";
 
 const SEVERITIES: readonly Severity[] = ["low", "medium", "high", "critical"];
 
@@ -115,19 +119,38 @@ async function review(octokit: InstallationOctokit): Promise<void> {
     return;
   }
 
-  // The model key is read from the environment, never an input, so it is never
-  // committed and never printed in a workflow file. The example workflow sets it
-  // from a repository secret.
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    core.setFailed(
-      "ANTHROPIC_API_KEY is not set. Pass it via `env` from a repository secret — see the configuration guide. To run only the blast-radius check, set `review: false`.",
-    );
+  // Keyless (GitHub OIDC federation) when a federation rule is configured,
+  // otherwise the ANTHROPIC_API_KEY secret. The key is read from the
+  // environment, never an input, so it is never written into a workflow file.
+  const auth = resolveAnthropicAuth(
+    {
+      federationRuleId: core.getInput("anthropic-federation-rule-id"),
+      organizationId: core.getInput("anthropic-organization-id"),
+      workspaceId: core.getInput("anthropic-workspace-id"),
+      serviceAccountId: core.getInput("anthropic-service-account-id"),
+      audience: core.getInput("anthropic-oidc-audience") || "https://api.anthropic.com",
+    },
+    {
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      oidcRequestUrl: process.env.ACTIONS_ID_TOKEN_REQUEST_URL,
+      baseURL: process.env.ANTHROPIC_BASE_URL,
+    },
+    async (audience) => {
+      const token = await core.getIDToken(audience);
+      // Claims only, never the token itself, so a refused sign-in can be
+      // compared with the federation rule in the Console.
+      core.notice(describeIdentityToken(token), { title: "PostDev sign-in identity" });
+      return token;
+    },
+  );
+  if (auth.kind === "missing") {
+    core.setFailed(auth.message);
     return;
   }
+  core.info(auth.summary);
 
   const model = core.getInput("model") || DEFAULT_ACTION_MODEL;
-  const fallbackModel = core.getInput("fallback-model") || DEFAULT_ACTION_MODEL;
+  const fallbackModel = core.getInput("fallback-model") || DEFAULT_ACTION_FALLBACK_MODEL;
   const botLogin = core.getInput("bot-login") || "github-actions[bot]";
 
   const minSeverity = parseSeverity(core.getInput("min-severity") || "medium");
@@ -141,7 +164,7 @@ async function review(octokit: InstallationOctokit): Promise<void> {
   // `getOctokit` returns an Octokit that is structurally the installation client
   // the engine expects; the cast in main() records that at this one boundary.
   const github = createGitHubClient(octokit);
-  const claude = createAnthropicModel(new Anthropic({ apiKey }), {
+  const claude = createAnthropicModel(new Anthropic(auth.options), {
     model,
     fallbackModel,
   });
