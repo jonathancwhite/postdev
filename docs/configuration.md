@@ -137,6 +137,25 @@ with:
   blast-radius: true
 ```
 
+The review runs on two axes, each its own model call:
+
+- **Standards** reads each of these files that exists, at the pull
+  request's base so a change can't rewrite the rules it is checked against:
+  `CODING_STANDARDS.md`, `docs/CODING_STANDARDS.md`, `CONTRIBUTING.md`,
+  `.github/CONTRIBUTING.md`, `docs/CONTRIBUTING.md`, `CLAUDE.md`, `AGENTS.md`
+  and `.github/copilot-instructions.md`. It always adds a baseline of twelve
+  code smells, which your documents override.
+- **Spec** reads up to three issues that the pull request's title, body or
+  commit messages reference in this repository. With none, it is skipped. On a
+  push to an open pull request it reports only scope creep and wrong
+  implementations in that push, since earlier commits may already cover what
+  the push leaves out.
+
+Findings are labelled with their axis (for example
+**[MEDIUM] Standards · possible Feature Envy**) and the summary lists the two
+axes under their own headings. A run uses two model calls when an issue is
+linked, and one otherwise.
+
 ## `blast-radius`
 
 Work out the pull request's blast radius and post it as the

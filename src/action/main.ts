@@ -15,6 +15,7 @@ import { runReview } from "../review/runReview.js";
 import type { Logger } from "../review/handlePullRequestOpened.js";
 import { blastRadiusTargetFromEvent, reviewTargetFromEvent } from "./reviewEvent.js";
 import { describeIdentityToken, resolveAnthropicAuth } from "./anthropicAuth.js";
+import { createReviewContextReader } from "../github/reviewContext.js";
 import { countImporters } from "../blastRadius/importGraph.js";
 import { createBlastRadiusGitHub } from "../blastRadius/github.js";
 import { runBlastRadius } from "../blastRadius/runBlastRadius.js";
@@ -193,6 +194,7 @@ async function review(octokit: InstallationOctokit): Promise<void> {
     minSeverity,
     logger,
     scope,
+    context: createReviewContextReader(octokit),
   });
   core.info("PostDev review complete.");
 }

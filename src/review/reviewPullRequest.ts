@@ -6,9 +6,11 @@ import type {
 import type {
   ReviewModel,
   Finding,
+  ReviewDocument,
   ReviewFile,
   Severity,
 } from "../model/reviewModel.js";
+import type { ReviewContextReader } from "../github/reviewContext.js";
 import { PROMPT_VERSION } from "../model/reviewModel.js";
 import type { Logger } from "./handlePullRequestOpened.js";
 
@@ -60,6 +62,12 @@ export interface ReviewResult {
   model: string;
   /** The prompt version that produced the findings, for later storage. */
   promptVersion: string;
+  /**
+   * False when the Spec review was skipped because the pull request links no
+   * issue, so the summary can say only Standards was checked. Absent when the
+   * review did not report it (a draft, or an older model).
+   */
+  specReviewed?: boolean;
 }
 
 export interface ReviewDeps {
@@ -83,6 +91,32 @@ export interface ReviewDeps {
    * pull request as before.
    */
   changeSet?: { diff: string; changedFiles: ChangedFile[] };
+  /**
+   * Where the repository's coding standards and the pull request's linked
+   * issues come from. Without it, Standards uses the smell baseline alone and
+   * Spec is skipped.
+   */
+  context?: ReviewContextReader;
+}
+
+/** Read one kind of review context, logging and moving on if it fails. */
+async function readContext(
+  read: (() => Promise<ReviewDocument[]>) | undefined,
+  what: string,
+  logger: Logger,
+  prMeta: Record<string, unknown>,
+): Promise<ReviewDocument[]> {
+  if (!read) return [];
+  try {
+    return await read();
+  } catch (error) {
+    // A missing standards file or issue must never stop the review itself.
+    logger.info(`Could not read ${what}; reviewing without it`, {
+      ...prMeta,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
 }
 
 /**
@@ -167,10 +201,19 @@ export async function reviewPullRequest(
 
   const { included, partial } = selectFiles(diff, files, maxContextBytes);
 
+  const context = deps.context;
+  const [standards, spec] = await Promise.all([
+    readContext(context && (() => context.standards(pr)), "coding standards", logger, prMeta),
+    readContext(context && (() => context.spec(pr)), "linked issues", logger, prMeta),
+  ]);
+
   const response = await deps.claude.review({
     diff,
     files: included,
     promptVersion: PROMPT_VERSION,
+    standards,
+    spec,
+    incremental: Boolean(deps.changeSet),
   });
 
   const threshold = deps.minSeverity ?? SEVERITY_THRESHOLD;
@@ -187,6 +230,8 @@ export async function reviewPullRequest(
     partial,
     model: response.model,
     promptVersion: PROMPT_VERSION,
+    standardsDocs: standards.map((doc) => doc.source),
+    specDocs: spec.map((doc) => doc.source),
   });
 
   return {
@@ -194,5 +239,8 @@ export async function reviewPullRequest(
     partial,
     model: response.model,
     promptVersion: PROMPT_VERSION,
+    ...(response.specReviewed === undefined
+      ? {}
+      : { specReviewed: response.specReviewed }),
   };
 }
