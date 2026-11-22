@@ -1,5 +1,5 @@
 import type { GitHubClient, PullRequestContext } from "../github/client.js";
-import type { Severity } from "../model/reviewModel.js";
+import { REVIEW_AXES, type ReviewAxis, type Severity } from "../model/reviewModel.js";
 import type { GatedFinding, ReviewResult } from "./reviewPullRequest.js";
 import { fingerprintFinding, type FindingPlacement } from "../store/trainingStore.js";
 import { fingerprintMarker } from "./fingerprintMarker.js";
@@ -160,14 +160,28 @@ const SEVERITY_LABEL: Record<Severity, string> = {
   critical: "CRITICAL",
 };
 
-/** The one-line body of an inline comment, e.g. "**[HIGH] correctness** — …". */
+const AXIS_LABEL: Record<ReviewAxis, string> = {
+  correctness: "Correctness",
+  standards: "Standards",
+  spec: "Spec",
+};
+
+/** "[HIGH] Spec · missing requirement", or the bare category for an older finding. */
+function findingLabel(finding: GatedFinding): string {
+  const kind = finding.axis
+    ? `${AXIS_LABEL[finding.axis]} · ${finding.category}`
+    : finding.category;
+  return `**[${SEVERITY_LABEL[finding.severity]}] ${kind}**`;
+}
+
+/** The one-line body of an inline comment, e.g. "**[HIGH] Spec · scope creep** — …". */
 function inlineBody(finding: GatedFinding): string {
-  return `${BOT_HEADING} · **[${SEVERITY_LABEL[finding.severity]}] ${finding.category}** — ${finding.message}`;
+  return `${BOT_HEADING} · ${findingLabel(finding)} — ${finding.message}`;
 }
 
 /** The one-line entry a finding gets in the summary list. */
 function summaryLine(finding: GatedFinding): string {
-  return `- \`${finding.file}:${finding.line}\` **[${SEVERITY_LABEL[finding.severity]}] ${finding.category}** — ${finding.message}`;
+  return `- \`${finding.file}:${finding.line}\` ${findingLabel(finding)} — ${finding.message}`;
 }
 
 /**
@@ -204,6 +218,7 @@ function buildSummary(
   inline: GatedFinding[],
   unanchored: GatedFinding[],
   partial: boolean,
+  specReviewed: boolean | undefined,
 ): string {
   const parts: string[] = [BOT_HEADING, ""];
 
@@ -214,24 +229,50 @@ function buildSummary(
     );
   }
 
+  const specNote =
+    specReviewed === false
+      ? ["", "_Spec: skipped, because this pull request links no issue._"]
+      : [];
+
   const total = inline.length + unanchored.length;
   if (total === 0) {
-    parts.push("Looks good — nothing blocking.");
+    parts.push("Looks good — nothing blocking.", ...specNote);
     return parts.join("\n");
   }
 
-  parts.push(`Caught ${total} thing${total === 1 ? "" : "s"} worth a look:`, "");
   // Inline findings carry their fingerprint marker on their inline comment, so
   // their summary line needs none. An unanchored finding has no inline comment,
   // so its marker rides here — its only home for a later run to read it back.
-  for (const finding of inline) parts.push(summaryLine(finding));
-  for (const finding of unanchored) {
-    const marker = fingerprintMarker(fingerprintFinding(owner, repo, finding));
-    parts.push(
-      `${summaryLine(finding)} _(outside the diff — no inline anchor)_ ${marker}`,
-    );
+  const lines = (findings: GatedFinding[]): string[] => [
+    ...findings.filter((f) => inline.includes(f)).map(summaryLine),
+    ...findings
+      .filter((f) => unanchored.includes(f))
+      .map(
+        (f) =>
+          `${summaryLine(f)} _(outside the diff — no inline anchor)_ ${fingerprintMarker(
+            fingerprintFinding(owner, repo, f),
+          )}`,
+      ),
+  ];
+
+  const all = [...inline, ...unanchored];
+  parts.push(`Caught ${total} thing${total === 1 ? "" : "s"} worth a look:`, "");
+  if (!all.some((finding) => finding.axis)) {
+    parts.push(...lines(all));
+    return parts.join("\n");
   }
 
+  // The axes are reported separately and never ranked against each other: a
+  // change can follow every standard and still miss its issue, or the reverse.
+  for (const axis of REVIEW_AXES) {
+    const ofAxis = all.filter((finding) => finding.axis === axis);
+    if (ofAxis.length === 0) continue;
+    parts.push(`**${AXIS_LABEL[axis]}**`, ...lines(ofAxis), "");
+  }
+  const other = all.filter((finding) => !finding.axis);
+  if (other.length > 0) parts.push(...lines(other), "");
+  if (parts[parts.length - 1] === "") parts.pop();
+  parts.push(...specNote);
   return parts.join("\n");
 }
 
@@ -268,6 +309,7 @@ export async function postReview(
     inline,
     unanchored,
     result.partial,
+    result.specReviewed,
   );
   // Each inline comment carries an invisible fingerprint marker, so a later run
   // can read the bot's own comments back and skip a finding it already posted —

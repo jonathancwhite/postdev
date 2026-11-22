@@ -18,6 +18,7 @@ import {
 } from "./postReview.js";
 import type { GatedFinding } from "./reviewPullRequest.js";
 import type { Logger } from "./handlePullRequestOpened.js";
+import type { ReviewContextReader } from "../github/reviewContext.js";
 
 const noopLogger: Logger = { info() {} };
 
@@ -55,6 +56,8 @@ export interface RunReviewDeps {
    * first review and on a manual re-review, which both cover the whole change.
    */
   scope?: { diff: string; changedFiles: ChangedFile[] };
+  /** Where the coding standards and linked issues come from; see ReviewDeps. */
+  context?: ReviewContextReader;
 }
 
 /**
@@ -131,6 +134,7 @@ export async function runReview(
     logger,
     minSeverity: deps.minSeverity,
     maxContextBytes: deps.maxContextBytes,
+    context: deps.context,
     changeSet: deps.scope
       ? { diff: deps.scope.diff, changedFiles: deps.scope.changedFiles }
       : undefined,

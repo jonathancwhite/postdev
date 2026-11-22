@@ -1,11 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  CORRECTNESS_SYSTEM_PROMPT,
+  SPEC_INCREMENTAL_NOTE,
+  SPEC_SYSTEM_PROMPT,
+  STANDARDS_SYSTEM_PROMPT,
+} from "./reviewPrompts.js";
 
 /**
  * The prompt version stamped onto every review. Later tickets store it beside
  * each finding so a prompt change never poisons old training data. Bump this
  * whenever the wording or schema below changes.
  */
-export const PROMPT_VERSION = "2026-07-21.1";
+export const PROMPT_VERSION = "2026-11-22.1";
 
 /** The engine's default review model. A host may override it — the GitHub
  * Action defaults to a cheaper model so a personal repo's bill stays small. */
@@ -22,6 +28,18 @@ export type Severity = "low" | "medium" | "high" | "critical";
 
 const SEVERITIES: readonly Severity[] = ["low", "medium", "high", "critical"];
 
+/**
+ * Which review a finding came from. Correctness asks whether the changed code
+ * works; Standards asks whether it follows the repository's documented coding
+ * standards (plus a code-smell baseline); Spec asks whether it does what its
+ * linked issue asked. Each is reviewed and reported separately, never ranked
+ * against the others.
+ */
+export type ReviewAxis = "correctness" | "standards" | "spec";
+
+/** The axes in the order they are reported. */
+export const REVIEW_AXES: readonly ReviewAxis[] = ["correctness", "standards", "spec"];
+
 /** A single thing the model flagged. The model reports every one it finds. */
 export interface Finding {
   /** Path of the changed file the finding sits in. */
@@ -35,12 +53,21 @@ export interface Finding {
   message: string;
   /** The model's own confidence, 0..1. */
   confidence: number;
+  /** The review that produced it. Absent on findings from older prompts. */
+  axis?: ReviewAxis;
 }
 
 /** The full text of one changed file at the pull request's head. */
 export interface ReviewFile {
   path: string;
   contents: string;
+}
+
+/** A document the review measures the change against, with where it came from. */
+export interface ReviewDocument {
+  /** Where it came from, e.g. "CONTRIBUTING.md" or "issue #42". */
+  source: string;
+  text: string;
 }
 
 /** Everything the model needs to review one pull request. */
@@ -51,6 +78,12 @@ export interface ReviewRequest {
   files: ReviewFile[];
   /** Carried through so the real client can stamp the prompt it used. */
   promptVersion: string;
+  /** The repository's documents on how code should be written (Standards). */
+  standards?: ReviewDocument[];
+  /** The issues the pull request links to (Spec). None means Spec is skipped. */
+  spec?: ReviewDocument[];
+  /** True when the diff is only the newest push, not the whole pull request. */
+  incremental?: boolean;
 }
 
 /** What the review call produced. */
@@ -59,6 +92,8 @@ export interface ReviewResponse {
   findings: Finding[];
   /** Which model actually produced these (default or fallback). */
   model: string;
+  /** True when the Spec review ran; false when there was no linked issue. */
+  specReviewed?: boolean;
 }
 
 /**
@@ -69,32 +104,6 @@ export interface ReviewResponse {
 export interface ReviewModel {
   review(request: ReviewRequest): Promise<ReviewResponse>;
 }
-
-/**
- * The system prompt. It tells the model to report EVERY finding with a severity
- * and a confidence and never to self-suppress — the severity gate lives in our
- * code, not here, so we can still capture sub-threshold findings for the store.
- * It also gives explicit permission to return an empty array on a clean change.
- */
-const SYSTEM_PROMPT = [
-  "You are a code reviewer for pull requests. You look for correctness problems",
-  "first: logic errors, unhandled errors and nulls, race conditions, off-by-one",
-  "mistakes, misused APIs, and code that breaks under some input. You may also",
-  "note widely-accepted language idioms for React, TypeScript, and Python.",
-  "",
-  "Do NOT comment on security, PHI, or PII — a separate review owns those — and",
-  "do not flag pure style a formatter already handles.",
-  "",
-  "Report EVERY finding you see. For each one give a severity (low, medium,",
-  "high, or critical) and a confidence from 0 to 1. Do NOT decide for yourself",
-  "that a finding is too minor to mention and drop it — a later step filters by",
-  "severity and confidence. Your job here is coverage, not filtering.",
-  "",
-  "If the change is clean, return an empty findings array. That is a valid and",
-  "welcome result — an empty array means 'looks good', not a mistake.",
-  "",
-  "Anchor every finding to the file and line it applies to.",
-].join("\n");
 
 /** JSON Schema the structured-output call validates the model against. */
 const OUTPUT_SCHEMA = {
@@ -179,10 +188,20 @@ export function parseFindings(text: string): Finding[] {
   return findings.map(parseFinding);
 }
 
-/** Assemble the user turn: the diff followed by each full file. */
-function buildUserContent(request: ReviewRequest): string {
+/** Wrap untrusted documents in tags the prompts tell the model are data. */
+function documentBlock(tag: string, docs: ReviewDocument[]): string[] {
+  return docs.flatMap((doc) => [
+    `<${tag} source=${JSON.stringify(doc.source)}>`,
+    doc.text,
+    `</${tag}>`,
+    "",
+  ]);
+}
+
+/** The diff and the full text of each changed file, shared by both axes. */
+function changeContent(request: ReviewRequest): string[] {
   const parts = [
-    "Review this pull request. Here is the unified diff:",
+    "Here is the unified diff of the change:",
     "",
     "```diff",
     request.diff,
@@ -195,12 +214,46 @@ function buildUserContent(request: ReviewRequest): string {
       parts.push(`### ${file.path}`, "```", file.contents, "```", "");
     }
   }
-  return parts.join("\n");
+  return parts;
+}
+
+/** The user turn for the Correctness axis: the change alone. */
+export function buildCorrectnessContent(request: ReviewRequest): string {
+  return changeContent(request).join("\n");
+}
+
+/** The user turn for the Standards axis: the repo's standards, then the change. */
+export function buildStandardsContent(request: ReviewRequest): string {
+  const standards = request.standards ?? [];
+  const parts =
+    standards.length > 0
+      ? [
+          "The repository documents how code should be written in these files:",
+          "",
+          ...documentBlock("repo-document", standards),
+        ]
+      : [
+          "The repository has no documented coding standards, so review against the smell baseline only.",
+          "",
+        ];
+  return [...parts, ...changeContent(request)].join("\n");
+}
+
+/** The user turn for the Spec axis: the linked issues, then the change. */
+export function buildSpecContent(request: ReviewRequest): string {
+  const parts = [
+    "The pull request links to these issues, which are its spec:",
+    "",
+    ...documentBlock("issue", request.spec ?? []),
+  ];
+  if (request.incremental) parts.push(SPEC_INCREMENTAL_NOTE, "");
+  return [...parts, ...changeContent(request)].join("\n");
 }
 
 async function callModel(
   anthropic: Anthropic,
   model: string,
+  system: string,
   userContent: string,
 ): Promise<Finding[]> {
   const response = await anthropic.messages.create({
@@ -214,7 +267,7 @@ async function callModel(
         schema: OUTPUT_SCHEMA,
       },
     },
-    system: SYSTEM_PROMPT,
+    system,
     messages: [{ role: "user", content: userContent }],
   });
 
@@ -234,10 +287,12 @@ export interface ReviewModelOptions {
 }
 
 /**
- * Build a {@link ReviewModel} backed by the Anthropic SDK. It sends the diff
- * and full files to the primary model and validates the structured findings it
- * returns. If the primary model call fails, it retries once on the fallback
- * model — so we can drop to a cheaper model later without a rewrite.
+ * Build a {@link ReviewModel} backed by the Anthropic SDK. It reviews the change
+ * on separate axes, each its own model call with its own prompt: Correctness
+ * and Standards always, and Spec only when the pull request links an issue.
+ * They run in parallel and their findings come back labelled by axis, never
+ * reranked. Each call that fails on the primary model is retried once on the
+ * fallback model.
  */
 export function createAnthropicModel(
   anthropic: Anthropic,
@@ -246,19 +301,46 @@ export function createAnthropicModel(
   const model = options.model ?? DEFAULT_MODEL;
   const fallbackModel = options.fallbackModel ?? DEFAULT_FALLBACK_MODEL;
 
+  /** One axis's call, falling back once; returns the model that answered. */
+  async function reviewAxis(
+    axis: ReviewAxis,
+    system: string,
+    userContent: string,
+  ): Promise<{ findings: Finding[]; model: string }> {
+    let findings: Finding[];
+    let used = model;
+    try {
+      findings = await callModel(anthropic, model, system, userContent);
+    } catch {
+      // The primary model was unavailable or errored: try the fallback once.
+      // If that also fails, the error propagates to the caller.
+      used = fallbackModel;
+      findings = await callModel(anthropic, fallbackModel, system, userContent);
+    }
+    return { findings: findings.map((f) => ({ ...f, axis })), model: used };
+  }
+
   return {
     async review(request) {
-      const userContent = buildUserContent(request);
-      try {
-        return { findings: await callModel(anthropic, model, userContent), model };
-      } catch {
-        // The primary model was unavailable or errored — try the fallback once.
-        // If that also fails, the error propagates to the caller.
-        return {
-          findings: await callModel(anthropic, fallbackModel, userContent),
-          model: fallbackModel,
-        };
-      }
+      const specReviewed = (request.spec ?? []).length > 0;
+      const [correctness, standards, spec] = await Promise.all([
+        reviewAxis("correctness", CORRECTNESS_SYSTEM_PROMPT, buildCorrectnessContent(request)),
+        reviewAxis("standards", STANDARDS_SYSTEM_PROMPT, buildStandardsContent(request)),
+        specReviewed
+          ? reviewAxis("spec", SPEC_SYSTEM_PROMPT, buildSpecContent(request))
+          : Promise.resolve(null),
+      ]);
+      // If any axis needed the fallback, report the fallback: the stored model
+      // id should never overstate which model reviewed the change.
+      const ran = [correctness, standards, ...(spec ? [spec] : [])];
+      const usedModel = ran.some((axis) => axis.model === fallbackModel)
+        ? fallbackModel
+        : model;
+      return {
+        findings: ran.flatMap((axis) => axis.findings),
+        model: usedModel,
+        specReviewed,
+      };
     },
   };
 }

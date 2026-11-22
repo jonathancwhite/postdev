@@ -5,6 +5,24 @@ model key. When a pull request opens or gets a push, PostDev reviews the change
 and posts its findings before a human looks — inline where it can, a short
 summary otherwise. Push a fix and it won't repeat a note it already made.
 
+The review looks at each change three ways, and reports them separately:
+
+- **Correctness:** does the changed code work? Logic errors, unhandled errors
+  and nulls, races, off-by-one mistakes and misused APIs.
+- **Standards:** does the code follow your repository's documented coding
+  standards (`CODING_STANDARDS.md`, `CONTRIBUTING.md`, `CLAUDE.md` and the like),
+  plus a baseline of twelve code smells? Your documents always win over the
+  baseline, and a smell is always flagged as a judgement call.
+- **Spec:** does the code do what its linked issue asked? PostDev reads the
+  issues the pull request's title, body or commits reference (`Closes #12`),
+  and reports missing or partial requirements, scope creep, and wrong
+  implementations. With no linked issue, this part is skipped and the summary
+  says so.
+
+The Standards and Spec axes and the smell baseline are adapted from Matt Pocock's
+[`code-review` skill](https://github.com/mattpocock/skills), under the MIT
+License (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
+
 ## Quick start
 
 1. Let the workflow sign in to Anthropic: either set up keyless sign-in with
@@ -74,6 +92,9 @@ One review engine sits behind the Action:
 - `src/store/postedFindingsStore.ts` — cross-push dedupe with no database: it
   rebuilds what it already posted from the bot's own prior comments.
 - `src/github/client.ts` — the narrow slice of GitHub the bot needs.
+- `src/github/reviewContext.ts` — what the Standards and Spec axes measure
+  against: the repository's standards files, read at the pull request's base,
+  and its linked issues. `src/model/reviewPrompts.ts` holds the three prompts.
 - `src/blastRadius/` — the blast-radius check: path rules and fan-out
   (`rules.ts`), the import counter (`importGraph.ts`), and its own seam
   (`runBlastRadius.ts`) with an injected GitHub slice, tested the same way.
