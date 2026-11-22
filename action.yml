@@ -6,9 +6,12 @@ branding:
   icon: "check-circle"
   color: "purple"
 
-# The model API key is NOT an input — pass it through `env` from a repository
-# secret so it is never written into a workflow file. See the configuration
-# guide: https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#anthropic_api_key
+# Two ways to sign in to Anthropic for the review:
+# - Keyless: set anthropic-federation-rule-id and anthropic-organization-id and
+#   give the job `permissions: id-token: write`. No secret is stored.
+# - A key: pass ANTHROPIC_API_KEY through `env` from a repository secret. It is
+#   not an input, so it is never written into a workflow file.
+# Guide: https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#signing-in-to-anthropic
 inputs:
   github-token:
     description: >-
@@ -19,11 +22,11 @@ inputs:
     default: ${{ github.token }}
   model:
     description: >-
-      Review model. Defaults to claude-sonnet-5 to keep costs low; set
-      claude-opus-4-8 for the strongest reviews. How to change it:
+      Review model. Defaults to claude-sonnet-5-5 to keep costs low; set
+      claude-opus-5-5 for the strongest reviews. How to change it:
       https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#model
     required: false
-    default: "claude-sonnet-5"
+    default: "claude-sonnet-5-5"
   fallback-model:
     description: >-
       Model tried once if the primary is unavailable. Configuration guide:
@@ -39,11 +42,42 @@ inputs:
     default: "medium"
   review:
     description: >-
-      Run the AI review. Needs ANTHROPIC_API_KEY in `env`. Set false to run only
+      Run the AI review. Needs keyless sign-in (the anthropic-federation-*
+      inputs) or ANTHROPIC_API_KEY in `env`. Set false to run only
       the blast-radius check. Configuration guide:
       https://github.com/jonathancwhite/postdev/blob/main/docs/configuration.md#review
     required: false
     default: "true"
+  anthropic-federation-rule-id:
+    description: >-
+      Federation rule ID (fdrl_...) from the Claude Console's Workload identity
+      page. With anthropic-organization-id, turns on keyless sign-in through
+      GitHub OIDC; the job needs `permissions: id-token: write`. Not a secret.
+    required: false
+    default: ""
+  anthropic-organization-id:
+    description: >-
+      Your Anthropic organization ID (a UUID), for keyless sign-in. Not a secret.
+    required: false
+    default: ""
+  anthropic-workspace-id:
+    description: >-
+      Workspace ID (wrkspc_...). Only needed when the federation rule covers
+      more than one workspace.
+    required: false
+    default: ""
+  anthropic-service-account-id:
+    description: >-
+      Optional service account ID (svac_...). If set, it must be the account
+      the federation rule targets.
+    required: false
+    default: ""
+  anthropic-oidc-audience:
+    description: >-
+      Audience requested on the GitHub OIDC token. Must match the federation
+      rule's audience.
+    required: false
+    default: "https://api.anthropic.com"
   blast-radius:
     description: >-
       Work out the pull request's blast radius and post it as the "PostDev blast

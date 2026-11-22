@@ -9,10 +9,10 @@ export const PROMPT_VERSION = "2026-07-21.1";
 
 /** The engine's default review model. A host may override it — the GitHub
  * Action defaults to a cheaper model so a personal repo's bill stays small. */
-export const DEFAULT_MODEL = "claude-opus-4-8";
+export const DEFAULT_MODEL = "claude-opus-5-5";
 
 /** Configurable fallback, tried when the default model is unavailable. */
-export const DEFAULT_FALLBACK_MODEL = "claude-sonnet-5";
+export const DEFAULT_FALLBACK_MODEL = "claude-sonnet-5-5";
 
 /**
  * How bad a finding is. Ranked low → critical; the severity gate in the review
@@ -227,9 +227,9 @@ async function callModel(
 }
 
 export interface ReviewModelOptions {
-  /** Primary review model. Defaults to Opus 4.8. */
+  /** Primary review model. Defaults to Opus 5.5. */
   model?: string;
-  /** Fallback model, tried once if the primary call fails. Defaults to Sonnet 5. */
+  /** Fallback model, tried once if the primary call fails. Defaults to Sonnet 5.5. */
   fallbackModel?: string;
 }
 

@@ -32,7 +32,7 @@ steps:
   - uses: jonathancwhite/postdev@v1
     with:
       blast-radius: true
-      review: false             # or keep the AI review on and pass ANTHROPIC_API_KEY
+      review: false             # or keep the AI review on (keyless sign-in or ANTHROPIC_API_KEY)
 ```
 
 Then add a `.github/postdev.json` with your repo's rules. Without one, PostDev uses

@@ -7,8 +7,10 @@ summary otherwise. Push a fix and it won't repeat a note it already made.
 
 ## Quick start
 
-1. Add your Anthropic key as a repository secret named `ANTHROPIC_API_KEY`
-   (**Settings → Secrets and variables → Actions**).
+1. Let the workflow sign in to Anthropic: either set up keyless sign-in with
+   GitHub OIDC (no stored secret, see
+   [signing in](docs/configuration.md#signing-in-to-anthropic)), or add your key
+   as a repository secret named `ANTHROPIC_API_KEY`.
 2. Copy [`examples/pull-request-review.yml`](examples/pull-request-review.yml)
    into your repo at `.github/workflows/postdev.yml`.
 3. Open a pull request.
@@ -18,7 +20,7 @@ summary otherwise. Push a fix and it won't repeat a note it already made.
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
   with:
-    model: claude-sonnet-5
+    model: claude-sonnet-5-5
     min-severity: medium
 ```
 
@@ -52,8 +54,8 @@ agent instructions.
 
 ## Cost
 
-PostDev defaults to `claude-sonnet-5` — a strong reviewer that keeps the bill
-small on a busy repo. Set `model: claude-opus-4-8` for the strongest reviews, or
+PostDev defaults to `claude-sonnet-5-5` — a strong reviewer that keeps the bill
+small on a busy repo. Set `model: claude-opus-5-5` for the strongest reviews, or
 raise `min-severity` for a quieter bot. You pay only for your own key's usage.
 
 ## How it fits together
